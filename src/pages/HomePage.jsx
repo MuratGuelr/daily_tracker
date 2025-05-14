@@ -669,13 +669,74 @@ function HomePage({ user }) {
   // Helper function to generate image filename from exercise name
   const getExerciseImageFilename = (exerciseName) => {
     if (!exerciseName) return null;
-    // Example: "Diz üstü şınav" -> "diz-ustu-sinav.gif"
-    const baseName = exerciseName
-      .toLowerCase()
-      .replace(/\s+/g, "-") // Replace spaces with hyphens
-      .replace(/[^a-z0-9-]/g, ""); // Remove special characters except hyphens
 
-    // Always return .gif extension
+    const normalizeText = (text) => {
+      return text
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/ı/g, "i")
+        .replace(/İ/g, "I")
+        .replace(/ş/g, "s")
+        .replace(/Ş/g, "S")
+        .replace(/ğ/g, "g")
+        .replace(/Ğ/g, "G")
+        .replace(/ü/g, "u")
+        .replace(/Ü/g, "U")
+        .replace(/ö/g, "o")
+        .replace(/Ö/g, "O")
+        .replace(/ç/g, "c")
+        .replace(/Ç/g, "C");
+    };
+
+    let baseName = exerciseName
+      .toLowerCase()
+      .replace(/\((.*?)\)/g, "")
+      .trim()
+      .normalizeText()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "")
+      .replace(/-+$/, "");
+
+    if (!baseName) return null;
+
+    const customMatches = {
+      // Pazartesi
+      şınav: "diz-ustu-sinav",
+      "walking-lunge": "lunge-her-bacak",
+      "glute-bridge-kalca-koprusu": "glute-bridge",
+      // Çarşamba
+      "wall-sit-duvarda-sandalye-durusu": "wall-sit",
+      "incline-push-up-egimli-sinav": "incline-push-up",
+      "reverse-lunge-geriye-hamle": "lunge-her-bacak", // Aynı resmi kullanıyoruz
+      // Cuma
+      "jump-squat": "jump-squat", // jump-squat.gif adında bir dosyanız olmalı
+      "pike-push-up-omuz-odakli": "pike-push-up",
+      "side-lunge-yan-hamle": "side-lunge",
+      "bird-dog-her-taraf": "bird-dog",
+      "plank-to-push-up-toplam": "plank-to-push-up",
+      // Cumartesi (HIIT)
+      "jumping-jacks": "jumping-jack", // Dosya adınız jumping-jack.gif ise
+      "high-knees-diz-cekme": "high-knees",
+      "burpee-veya-yarim-burpee": "burpee",
+      "mountain-climbers-dag-tirmanisi": "mountain-climbers",
+      // Diğer mevcut GIF'lerinizle eşleşebilecekler (isimleri kontrol edin):
+      squat: "squat",
+      plank: "plank",
+      "shoulder-press": "shoulder-press",
+      "bent-over-row": "bent-over-row",
+      "wall-push-up": "wall-push-up",
+      "side-plank": "side-plank",
+      "calf-raise": "calf-raise",
+      "dumbbell-curl": "dumbbell-curl",
+      row: "row", // Bu 'bent-over-row' ile aynı mı, yoksa farklı bir 'row' mu?
+      "shoulder-tap": "shoulder-tap",
+      "leg-raise": "leg-raise",
+    };
+
+    if (customMatches[baseName]) {
+      baseName = customMatches[baseName];
+    }
+
     return `${baseName}.gif`;
   };
 
@@ -762,18 +823,8 @@ function HomePage({ user }) {
                     className="mt-4 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 dark:focus:ring-offset-gray-800 disabled:opacity-50"
                   >
                     <PlayIcon className="h-5 w-5 mr-2" />
-                    {workoutDuration !== null
-                      ? "Antrenmanı Tekrar Başlat"
-                      : "Antrenmanı Başlat"}
+                    Antrenmanı Başlat
                   </button>
-                )}
-              {/* Kaydedilmiş Süreyi Göster */}
-              {workoutPerformed === plannedWorkoutName &&
-                workoutDuration !== null &&
-                !isTimerModalOpen && (
-                  <p className="mt-2 text-sm text-green-600 dark:text-green-400 font-medium">
-                    ✓ Süre: {workoutDuration} dakika kaydedildi.
-                  </p>
                 )}
             </div>
           )}
@@ -798,16 +849,16 @@ function HomePage({ user }) {
                 (currentStepConfig.type === "workout" &&
                   workoutPerformed === plannedWorkoutName &&
                   !isTimerModalOpen &&
-                  workoutDuration === null &&
-                  workoutPlanObject)
+                  workoutPlanObject &&
+                  (!workoutProgress || workoutProgress.length === 0))
               }
               className={`inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
                 currentStepConfig.type === "workout" &&
                 workoutPerformed === plannedWorkoutName &&
                 !isTimerModalOpen &&
-                workoutDuration === null &&
-                workoutPlanObject
-                  ? "bg-gray-400 cursor-not-allowed" // Timer başlatılmadıysa
+                workoutPlanObject &&
+                (!workoutProgress || workoutProgress.length === 0)
+                  ? "bg-gray-400 cursor-not-allowed"
                   : "bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500"
               } focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50`}
             >
@@ -893,23 +944,29 @@ function HomePage({ user }) {
               {/* ----- GÖRSEL ALANI ----- */}
               <div className="mt-4 h-48 bg-gray-200 dark:bg-gray-600 rounded flex items-center justify-center text-gray-500 dark:text-gray-400 overflow-hidden">
                 {(() => {
-                  // getExerciseImageFilename artık hep .gif döndürecek
                   const filename = getExerciseImageFilename(
                     currentExercise.name
                   );
+                  console.log(
+                    `Modal Image: Exercise="${currentExercise.name}", Generated Filename="${filename}"`
+                  );
                   if (filename) {
-                    const imageUrl = `/images/${filename}`; // public/images/diz-ustu-sinav.gif gibi
+                    const imageUrl = `/images/${filename}`;
+                    console.log(
+                      `Modal Image: Attempting to load URL="${imageUrl}"`
+                    );
                     return (
                       <img
                         src={imageUrl}
                         alt={currentExercise.name}
                         className="max-h-full max-w-full object-contain"
-                        // Opsiyonel: Hata durumunda placeholder gösterme
                         onError={(e) => {
-                          console.error(`Failed to load image: ${imageUrl}`);
-                          e.target.style.display = "none"; // Hide broken image icon
+                          console.error(
+                            `Modal Image: Failed to load image: ${imageUrl}`
+                          );
+                          e.target.style.display = "none";
                           const placeholder = e.target.nextSibling;
-                          if (placeholder) placeholder.style.display = "block"; // Show placeholder text
+                          if (placeholder) placeholder.style.display = "block";
                         }}
                       />
                     );
