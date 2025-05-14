@@ -125,7 +125,11 @@ export const dailyPlanSchedule = [
 
 // !!! BU TARİHİ KESİNLİKLE DOĞRU GİRİN !!!
 // Programınız 8 Temmuz 2024 Pazartesi başladıysa:
-export const startDate = new Date(2024, 6, 9); // Aylar 0-indexli olduğu için Temmuz = 6
+export const startDate = new Date(2024, 6, 8); // Aylar 0-indexli olduğu için Temmuz = 6
+console.log(
+  "planUtils.js dosyası yüklendi, startDate =",
+  startDate.toISOString()
+);
 
 // VEYA
 // export const startDate = new Date('2024-07-08T00:00:00'); // Saat, dk, sn sıfırlanmış
@@ -139,48 +143,69 @@ export const startDate = new Date(2024, 6, 9); // Aylar 0-indexli olduğu için 
 // );
 
 export function getDailyPlanForDate(targetDate) {
-  const targetDateStr =
-    targetDate instanceof Date
-      ? targetDate.toISOString().split("T")[0]
-      : "Invalid Date";
+  // Tarihleri kontrol et
+  console.log("getDailyPlanForDate: Gelen tarih (ham):", targetDate);
+  if (!(targetDate instanceof Date) || isNaN(targetDate.getTime())) {
+    console.error("getDailyPlanForDate: Geçersiz tarih değeri:", targetDate);
+    return { dayName: "Hata", tasks: ["Geçersiz tarih."] };
+  }
+
+  console.log("getDailyPlanForDate: Gelen tarih:", targetDate.toISOString());
+  console.log(
+    "getDailyPlanForDate: Program başlangıç tarihi:",
+    startDate.toISOString()
+  );
+
+  // ISO formatına dönüştür (sadece görsel log)
+  const targetDateStr = targetDate.toISOString().split("T")[0];
   console.log(
     `planUtils: Calculating plan for date: ${targetDateStr} (received as ${targetDate})`
   );
-  const startDateStr =
-    startDate instanceof Date
-      ? startDate.toISOString().split("T")[0]
-      : "Invalid Start Date";
+
+  const startDateStr = startDate.toISOString().split("T")[0];
   console.log(`planUtils: Using start date: ${startDateStr}`);
 
-  if (
-    !(targetDate instanceof Date) ||
-    !(startDate instanceof Date) ||
-    isNaN(targetDate) ||
-    isNaN(startDate)
-  ) {
+  // Hata kontrolü
+  if (isNaN(targetDate) || isNaN(startDate)) {
     console.error("planUtils: Invalid date provided to getDailyPlanForDate");
     return { dayName: "Hata", tasks: ["Geçersiz tarih."] };
   }
 
-  const targetUTC = Date.UTC(
-    targetDate.getUTCFullYear(),
-    targetDate.getUTCMonth(),
-    targetDate.getUTCDate()
-  );
-  const startUTC = Date.UTC(
-    startDate.getUTCFullYear(),
-    startDate.getUTCMonth(),
-    startDate.getUTCDate()
-  );
-  const diffTime = Math.abs(targetUTC - startUTC);
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  // ÇÖZÜM 1: Doğrudan JavaScript'in getDay() metodunu kullanarak günü belirleyelim
+  // JavaScript'te getDay(): 0=Pazar, 1=Pazartesi, ... 6=Cumartesi
+  // Bizim planımızda dayIndex: 0=Pazartesi, 1=Salı, ... 6=Pazar
 
-  // Döngüyü 7 güne indir
-  const dayIndex = diffDays % 7;
+  // Hedef tarihin JS gün indeksini al (0-6)
+  const jsWeekDay = targetDate.getDay(); // 0=Pazar, 1=Pazartesi, ... 6=Cumartesi
+
+  // JS gün indeksini bizim plan indeksine çevir (0=Pazartesi, ... 6=Pazar)
+  // Pazar(0) → Pazar(6), Pazartesi(1) → Pazartesi(0), ...
+  let dayIndex;
+  if (jsWeekDay === 0) {
+    dayIndex = 6; // Pazar
+  } else {
+    dayIndex = jsWeekDay - 1; // Diğer günler
+  }
+
   console.log(
-    `planUtils: targetUTC=${targetUTC}, startUTC=${startUTC}, diffTime=${diffTime}, diffDays=${diffDays}, calculated dayIndex=${dayIndex}`
+    "getDailyPlanForDate: Gün hesaplama (JavaScript'in gün indeksi):"
+  );
+  console.log(
+    `- JavaScript Day of Week: ${jsWeekDay} (0=Pazar, 1=Pazartesi, ..., 6=Cumartesi)`
+  );
+  console.log(
+    `- Bizim Plan İndeksimiz: ${dayIndex} (0=Pazartesi, 1=Salı, ..., 6=Pazar)`
   );
 
+  console.log("getDailyPlanForDate: Hesaplanan gün indeksi ve karşılığı:");
+  console.log(`- Calculated dayIndex: ${dayIndex}`);
+  console.log(
+    `- Calculated day: ${
+      dailyPlanSchedule[dayIndex]?.dayName || "Bilinmeyen gün"
+    }`
+  );
+
+  // Plan objesini bul
   const currentPlan = dailyPlanSchedule.find((p) => p.dayIndex === dayIndex);
   console.log(
     `planUtils: Found plan object for index ${dayIndex}:`,

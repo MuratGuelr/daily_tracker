@@ -198,10 +198,11 @@ const dailyPlanSchedule = [
   },
 ];
 
-// Referans bir başlangıç tarihi (örneğin ilk Pazartesi)
+// Referans bir başlangıç tarihi (örneğin ilk Pazartesi) - BU TANIMLAMA ARTIK KULLANILMIYOR
+// utils/planUtils.js dosyasındaki export const startDate değişkeni kullanılıyor
 // !!! ÖNEMLİ: BU TARİHİ KENDİ PROGRAMINIZIN BAŞLADIĞI İLK PAZARTESİ GÜNÜ İLE DEĞİŞTİRİN !!!
 // Örneğin, programınız 15 Nisan 2024 Pazartesi başladıysa: new Date('2024-04-15')
-const startDate = new Date("2024-04-08"); // Program başlangıç tarihini buraya YYYY-AA-GG formatında girin
+// const startDate = new Date("2024-04-08"); // Program başlangıç tarihini buraya YYYY-AA-GG formatında girin
 
 function HomePage({ user }) {
   const [currentStep, setCurrentStep] = useState(0);
@@ -235,6 +236,12 @@ function HomePage({ user }) {
   const [currentSetStartTime, setCurrentSetStartTime] = useState(null); // Mevcut setin başlangıç zamanı (timestamp)
   const [pauseStartTime, setPauseStartTime] = useState(null); // Duraklatma başlangıç zamanı
 
+  // Set bitirme animasyonu için state'ler
+  const [showSetCompletedAnimation, setShowSetCompletedAnimation] =
+    useState(false);
+  const [lastCompletedSet, setLastCompletedSet] = useState(null);
+  const [highlightSetNumber, setHighlightSetNumber] = useState(false);
+
   // Onun yerine bunları useEffect içine veya doğrudan kullanıldığı yere taşıyın
   const [todayPlan, setTodayPlan] = useState(null);
   const [workoutPlanObject, setWorkoutPlanObject] = useState(null);
@@ -242,8 +249,18 @@ function HomePage({ user }) {
   const [plannedWorkoutName, setPlannedWorkoutName] = useState("Aktivite Yok");
 
   useEffect(() => {
+    // Bugün değişkenini oluştur
     const today = new Date();
+    console.log("HomePage: Today Date Object:", today);
+    console.log("HomePage: Today ISO String:", today.toISOString());
+    console.log("HomePage: Today Locale String:", today.toLocaleString());
+    console.log("HomePage: Today Weekday:", today.getDay()); // 0-6 (Pazar-Cumartesi)
+
+    // Günün programını çek
     const plan = getDailyPlanForDate(today); // utils'den
+    console.log("HomePage: Received plan from getDailyPlanForDate:", plan);
+    console.log("HomePage: The day should be:", plan.dayName);
+
     const workoutObj = getWorkoutPlanObject(plan); // utils'den
     const exercises = getWorkoutExercises(workoutObj); // utils'den
 
@@ -433,6 +450,15 @@ function HomePage({ user }) {
   const handleFinishSet = () => {
     if (!currentSetStartTime || timerStatus !== "running") return; // Zamanlayıcı çalışmıyorsa veya set başlamamışsa bir şey yapma
 
+    // Buton dalgalanma (ripple) efekti - Düğmeye tıklama animasyonu
+    const buttons = document.querySelectorAll(".set-btn-ripple");
+    buttons.forEach((btn) => {
+      btn.classList.remove("animate-ripple");
+      // Zorunlu yeniden akış, animasyonu tekrar tetiklemek için
+      void btn.offsetWidth;
+      btn.classList.add("animate-ripple");
+    });
+
     const setEndTime = Date.now();
     const setDuration = Math.round((setEndTime - currentSetStartTime) / 1000); // Saniye cinsinden süre
 
@@ -444,6 +470,15 @@ function HomePage({ user }) {
     };
     setWorkoutProgress((prev) => [...prev, newProgress]); // İlerlemeyi kaydet
 
+    // Animasyon state'lerini ayarla
+    setLastCompletedSet(currentSet);
+    setShowSetCompletedAnimation(true);
+
+    // 1.5 saniye sonra animasyonu kapat
+    setTimeout(() => {
+      setShowSetCompletedAnimation(false);
+    }, 1500);
+
     const currentExercise = workoutExercises[currentExerciseIndex];
 
     // Bir sonraki sete veya egzersize geç
@@ -451,6 +486,12 @@ function HomePage({ user }) {
       // Sonraki set
       setCurrentSet((prev) => prev + 1);
       setCurrentSetStartTime(Date.now()); // Yeni setin başlangıç zamanını kaydet
+
+      // Set numarasını vurgula
+      setHighlightSetNumber(true);
+      setTimeout(() => {
+        setHighlightSetNumber(false);
+      }, 1000);
     } else {
       // Egzersizin son setiydi, sonraki egzersize geç
       if (currentExerciseIndex < workoutExercises.length - 1) {
@@ -458,6 +499,12 @@ function HomePage({ user }) {
         setCurrentExerciseIndex((prev) => prev + 1);
         setCurrentSet(1); // Seti 1'e sıfırla
         setCurrentSetStartTime(Date.now()); // Yeni egzersizin ilk setinin başlangıcı
+
+        // Set numarasını vurgula
+        setHighlightSetNumber(true);
+        setTimeout(() => {
+          setHighlightSetNumber(false);
+        }, 1000);
       } else {
         // Tüm antrenman bitti! Zamanlayıcıyı durdur ve kaydetme işlemine geç
         stopAndSaveTimer();
@@ -670,10 +717,11 @@ function HomePage({ user }) {
   const getExerciseImageFilename = (exerciseName) => {
     if (!exerciseName) return null;
 
+    // Function to convert Turkish chars to ASCII equivalents and simplify name
     const normalizeText = (text) => {
       return text
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
+        .normalize("NFD") // Decompose combined letters
+        .replace(/[\u0300-\u036f]/g, "") // Remove diacritic marks
         .replace(/ı/g, "i")
         .replace(/İ/g, "I")
         .replace(/ş/g, "s")
@@ -688,57 +736,77 @@ function HomePage({ user }) {
         .replace(/Ç/g, "C");
     };
 
-    let baseName = exerciseName
+    let processedName = exerciseName
       .toLowerCase()
-      .replace(/\((.*?)\)/g, "")
-      .trim()
-      .normalizeText()
-      .replace(/\s+/g, "-")
-      .replace(/[^a-z0-9-]/g, "")
-      .replace(/-+$/, "");
+      .replace(/\((.*?)\)/g, "") // Parantez içini ve parantezleri kaldır
+      .trim(); // Başta ve sonda olabilecek boşlukları kaldır
+
+    let baseName = normalizeText(processedName)
+      .replace(/\s+/g, "-") // Boşlukları tire ile değiştir
+      .replace(/[^a-z0-9-]/g, "") // Kalan özel karakterleri kaldır (tire hariç)
+      .replace(/-+$/, ""); // Sondaki tireleri temizle
 
     if (!baseName) return null;
 
     const customMatches = {
       // Pazartesi
-      şınav: "diz-ustu-sinav",
+      sinav: "diz-ustu-sinav", // 'şınav' normalize edilince 'sinav' olur
       "walking-lunge": "lunge-her-bacak",
       "glute-bridge-kalca-koprusu": "glute-bridge",
       // Çarşamba
       "wall-sit-duvarda-sandalye-durusu": "wall-sit",
       "incline-push-up-egimli-sinav": "incline-push-up",
-      "reverse-lunge-geriye-hamle": "lunge-her-bacak", // Aynı resmi kullanıyoruz
+      "reverse-lunge-geriye-hamle": "lunge-her-bacak",
+      mekik: "mekik",
+      superman: "superman",
       // Cuma
-      "jump-squat": "jump-squat", // jump-squat.gif adında bir dosyanız olmalı
+      "jump-squat": "jump-squat",
       "pike-push-up-omuz-odakli": "pike-push-up",
       "side-lunge-yan-hamle": "side-lunge",
       "bird-dog-her-taraf": "bird-dog",
       "plank-to-push-up-toplam": "plank-to-push-up",
       // Cumartesi (HIIT)
-      "jumping-jacks": "jumping-jack", // Dosya adınız jumping-jack.gif ise
+      "jumping-jacks": "jumping-jack",
       "high-knees-diz-cekme": "high-knees",
       "burpee-veya-yarim-burpee": "burpee",
       "mountain-climbers-dag-tirmanisi": "mountain-climbers",
-      // Diğer mevcut GIF'lerinizle eşleşebilecekler (isimleri kontrol edin):
+      // Genel
       squat: "squat",
       plank: "plank",
-      "shoulder-press": "shoulder-press",
-      "bent-over-row": "bent-over-row",
-      "wall-push-up": "wall-push-up",
-      "side-plank": "side-plank",
-      "calf-raise": "calf-raise",
-      "dumbbell-curl": "dumbbell-curl",
-      row: "row", // Bu 'bent-over-row' ile aynı mı, yoksa farklı bir 'row' mu?
-      "shoulder-tap": "shoulder-tap",
-      "leg-raise": "leg-raise",
     };
 
     if (customMatches[baseName]) {
       baseName = customMatches[baseName];
     }
-
     return `${baseName}.gif`;
   };
+
+  // Mevcut egzersiz için resmi optimize edilmiş şekilde oluşturalım
+  const ExerciseImage = React.useMemo(() => {
+    if (!currentExercise || !currentExercise.name) return null;
+
+    const filename = getExerciseImageFilename(currentExercise.name);
+    if (!filename) return null;
+
+    const imageUrl = `/images/${filename}`;
+
+    return (
+      <>
+        <img
+          src={imageUrl}
+          alt={currentExercise.name}
+          className="max-h-full max-w-full object-contain"
+          onError={(e) => {
+            e.target.style.display = "none";
+            const placeholder = e.target.nextSibling;
+            if (placeholder) placeholder.style.display = "block";
+          }}
+        />
+        {/* Placeholder text, initially hidden */}
+        <span style={{ display: "none" }}>Resim Yüklenemedi</span>
+      </>
+    );
+  }, [currentExercise?.name]); // Sadece egzersiz adı değiştiğinde yeniden oluştur
 
   if (isDataLoading) {
     return (
@@ -925,7 +993,7 @@ function HomePage({ user }) {
                 <XMarkIcon className="h-6 w-6" />
               </button>
             </div>
-            <div className="text-center mb-4 p-4 bg-indigo-50 dark:bg-gray-700 rounded flex-shrink-0">
+            <div className="text-center mb-4 p-4 bg-indigo-50 dark:bg-gray-700 rounded flex-shrink-0 relative overflow-hidden">
               <p className="text-sm text-indigo-500 dark:text-indigo-300 font-medium">
                 Hareket {currentExerciseIndex + 1} / {workoutExercises.length}
               </p>
@@ -939,42 +1007,34 @@ function HomePage({ user }) {
                   : `${currentExercise.duration} sn`}
               </p>
               <p className="text-xl font-bold text-indigo-600 dark:text-indigo-400 mt-2">
-                Set {currentSet} / {currentExercise.sets}
+                Set{" "}
+                <span
+                  className={`${
+                    highlightSetNumber
+                      ? "inline-block transition-all duration-300 transform scale-150 text-green-500 dark:text-green-400"
+                      : ""
+                  }`}
+                >
+                  {currentSet}
+                </span>{" "}
+                / {currentExercise.sets}
               </p>
+
+              {/* Set tamamlandı animasyonu - Koşullu olarak görünür */}
+              {showSetCompletedAnimation && (
+                <div className="absolute inset-0 bg-green-400 bg-opacity-30 dark:bg-green-500 dark:bg-opacity-20 flex items-center justify-center animate-pulse">
+                  <div className="bg-white dark:bg-gray-800 rounded-lg px-4 py-2 shadow-lg transform transition-all duration-300 scale-in animate-bounce">
+                    <p className="text-green-600 dark:text-green-400 font-bold flex items-center">
+                      <CheckIcon className="h-5 w-5 mr-1" />
+                      Set {lastCompletedSet} Tamamlandı!
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* ----- GÖRSEL ALANI ----- */}
               <div className="mt-4 h-48 bg-gray-200 dark:bg-gray-600 rounded flex items-center justify-center text-gray-500 dark:text-gray-400 overflow-hidden">
-                {(() => {
-                  const filename = getExerciseImageFilename(
-                    currentExercise.name
-                  );
-                  console.log(
-                    `Modal Image: Exercise="${currentExercise.name}", Generated Filename="${filename}"`
-                  );
-                  if (filename) {
-                    const imageUrl = `/images/${filename}`;
-                    console.log(
-                      `Modal Image: Attempting to load URL="${imageUrl}"`
-                    );
-                    return (
-                      <img
-                        src={imageUrl}
-                        alt={currentExercise.name}
-                        className="max-h-full max-w-full object-contain"
-                        onError={(e) => {
-                          console.error(
-                            `Modal Image: Failed to load image: ${imageUrl}`
-                          );
-                          e.target.style.display = "none";
-                          const placeholder = e.target.nextSibling;
-                          if (placeholder) placeholder.style.display = "block";
-                        }}
-                      />
-                    );
-                  }
-                  return null;
-                })()}
-                {/* Placeholder text, initially hidden */}
-                <span style={{ display: "none" }}>Resim Yüklenemedi</span>
+                {ExerciseImage}
               </div>
               {/* ------------------------- */}
             </div>
@@ -1019,10 +1079,15 @@ function HomePage({ user }) {
                 type="button"
                 onClick={handleFinishSet}
                 disabled={timerStatus !== "running"} // Sadece zamanlayıcı çalışırken aktif
-                className="w-full inline-flex justify-center items-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full inline-flex justify-center items-center px-6 py-3 border border-transparent rounded-md shadow-sm text-base font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transform transition-all duration-200 hover:scale-105 active:scale-95 hover:shadow-lg active:shadow-sm relative"
               >
-                Seti Bitir
-                <CheckIcon className="h-5 w-5 ml-2" />
+                <span className="relative z-10">
+                  Seti Bitir
+                  <CheckIcon className="h-5 w-5 ml-2 inline-block" />
+                </span>
+                <span className="absolute inset-0 rounded-md overflow-hidden">
+                  <span className="absolute inset-0 transform scale-0 rounded-md bg-white bg-opacity-20 origin-center transition-transform set-btn-ripple"></span>
+                </span>
               </button>
             </div>
             {/* İlerleme Geçmişi (Opsiyonel) */}
